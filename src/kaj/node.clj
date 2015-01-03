@@ -1,52 +1,39 @@
 (ns kaj.node
-  (:require [kaj.hash        :as hash]
-            [taoensso.timbre :as log])
+  (:require [kaj.hash         :as hash]
+            [kaj.node.address :as addr]
+            [taoensso.timbre  :as log])
   (:import (kaj.hash     Hashable)
            (clojure.lang IFn)
            (java.net Inet6Address)))
 
 (def ^:dynamic *node* nil)
 
-(def ^:dynamic *port* 45678)
+(def ^:dynamic *limit* 10)
 
-(defrecord Node [host port]
+(defrecord Node [address finger-table handlers]
   Hashable
   (hash-code
     [this]
-    (let [key (str (:host this) ":" (:port this))]
-      (hash/hash-code key))))
+    (hash/hash-code (:address this))))
 
 (defn make
-  ([] (make (Inet6Address/getByName "::1")))
-  ([host] (make host *port*))
-  ([host port] (Node. host port)))
+  ([] 
+   (make (addr/make)))
+  ([address] 
+   (make address {}))
+  ([address finger-table]
+   (make address finger-table {}))
+  ([address finger-table handlers]
+   (Node. address finger-table handlers)))
 
-(defn port 
-  ([] (port *node*))
-  ([n] (:port n)))
+(defn atomic
+  [addr]
+  (atom (make addr)))
 
-(defn host 
-  ([] (host *node*))
-  ([n] (:host n)))
-
-(def ^:dynamic *limit* 10)
-
-(def ^:dynamic *state* {})
-
-;; **todo** : memoize hash-code
-(defn distance
-  ([val] (distance val *node*))
-  ([v0 v1]
-   (bit-xor (hash/hash-code v0)
-            (hash/hash-code v1))))
-
-(defn finger-key
-  [val]
-  (.bitLength (distance val)))
-
-(defn bucket
-  [val]
-  (*state* (finger-key val)))
+(defn index
+  ([val] (index val *node*))
+  ([val node] 
+   (.bitLength (hash/distance val (:address node)))))
 
 (defn make-rooms
   [bucket]
@@ -54,27 +41,34 @@
     (into [] (drop 1 bucket))
     bucket))
 
-(defn add-to-bucket
-  [bucket node]
-  (conj (make-rooms bucket) node))
-
 (defn closer
   [p a b]
-  (<= (distance p a) (distance p b)))
+  (<= (hash/distance p a) (hash/distance p b)))
 
 (defn closest-nodes 
-  [n val]
-  (take n (sort-by (partial closer val) (bucket val))))
+  ([num val] 
+   (closest-nodes num val *node*))
+  ([num val node]
+   (let [table (:finger-table node)
+         index (index val node)]
+     (take num (sort-by (partial closer val) (table index))))))
 
-(defn insert! [node]
-  (let [key (finger-key node)
-        buck (*state* key)]
-    (set! *state* 
-          (assoc *state*
-                 key 
-                 (add-to-bucket buck node)))))
+(defn into-bucket 
+  [addr bucket]
+  (conj (make-rooms bucket) addr))
+
+(defn into-table
+  [table index addr]
+  (assoc table index (into-bucket addr (table index))))
+
+(defn aconj
+  [node addr]
+  (assoc node
+         :finger-table 
+         (into-table (:finger-table node) 
+                     (index addr node)
+                     addr)))
 
 (defmacro with-node [[expr] & body]
-  `(binding [*node* ~expr
-             *state* {}] 
+  `(binding [*node* ~expr]
      ~@body))

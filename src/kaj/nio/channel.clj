@@ -1,6 +1,8 @@
 (ns kaj.nio.channel
+  (:refer-clojure :exclude [send])
   (:require [kaj.nio.bitmap :as bmp]
-            [kaj.nio.selector :as sel]))
+            [kaj.nio.selector :as sel])
+  (:import (java.net InetSocketAddress)))
 
 (defn call-with-open-channel [ch fun]
   (try (fun ch)
@@ -19,8 +21,17 @@
 (def ^:dynamic *events* #{:accept :read})
 
 (defn register 
-  ([callback] (register callback *events*))
-  ([callback events] (register callback events *channel*))
-  ([callback events chan] (register callback events chan sel/*selector*))
+  ([callback] 
+   (register callback *events*))
+  ([callback events] 
+   (register callback events *channel*))
+  ([callback events chan] 
+   (register callback events chan sel/*selector*))
   ([callback events chan selector]
    (.register chan selector (bmp/to-bitmap events) callback)))
+
+(defn send 
+  ([buf addr]
+   (send buf addr *channel*))
+  ([buf addr chan]
+   (.send chan buf (InetSocketAddress. (:host addr) (:port addr)))))

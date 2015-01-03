@@ -26,4 +26,3 @@
   ([] (read! *buffer*))
   ([buf] (read! buf chan/*channel*))
   ([buf chan] (.receive chan buf)))
-

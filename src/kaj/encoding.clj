@@ -1,4 +1,5 @@
 (ns kaj.encoding
+  (:refer-clojure :exclude [read-string])
   (:require [kaj.nio.buffer :as buf]
             [kaj.hash       :as hash]
             [kaj.node       :as node])
@@ -60,18 +61,37 @@
 
 (def read-index (partial write-intn 10))
 
-(defn write-node 
-  ([node] 
-   (write-node node buf/*buffer*))
-  ([node buf]
-   (write-intn 16 (.getAddress (:host node)) buf)
-   (write-int16 (:port node))))
+(defn write-string 
+  ([s] 
+   (write-string s buf/*buffer*))
+  ([s buf]
+   (let [raw (.getBytes s "UTF-8")
+         len (count raw)]
+     (write-int16 len buf)
+     (.put raw))))
 
-(defn read-node
-  ([] (read-node buf/*buffer*))
-  ([node buf]
+(defn read-string
+  ([] 
+   (read-string buf/*buffer*))
+  ([buf]
+   (let [len (read-int16 buf)
+         raw (byte-array len)]
+     (.get buf raw 0 len))))
+
+(defn write-address
+  ([addr] 
+   (write-address addr buf/*buffer*))
+  ([addr buf]
+   (write-intn 16 (.getAddress (:host addr)) buf)
+   (write-int16 (:port addr))
+   (write-string (name (:ring addr)))))
+
+(defn read-address
+  ([] (read-address buf/*buffer*))
+  ([buf]
    (node/make (Inet6Address/getByAddress (read-intn 16 buf))
-              (read-int16 buf))))
+              (read-int16 buf)
+              (keyword (read-string buf)))))
 
 (def message-id (atom {}))
 

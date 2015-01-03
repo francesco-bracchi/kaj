@@ -39,3 +39,8 @@
   String
   (hash-code [this hash] (hash this)))
 
+(defn distance 
+  [p q]
+  (bit-xor (hash-code p)
+           (hash-code q)))
+  
